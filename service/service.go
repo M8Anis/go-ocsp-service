@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto"
+	"crypto/x509"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,9 +16,9 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
-func Serve() {
+func Serve(host, dbPath string, caCert, responderCert *x509.Certificate, responderPrivkey crypto.Signer) {
 	// Database
-	db, err := badger.Open(badger.DefaultOptions("").WithInMemory(true))
+	db, err := badger.Open(badger.DefaultOptions(dbPath))
 	if err != nil {
 		logrus.Fatal(err)
 	}
@@ -34,7 +36,7 @@ func Serve() {
 	s := &http.Server{
 		Handler: r,
 
-		Addr: "127.251.209.16:19721",
+		Addr: host,
 	}
 
 	go func() {

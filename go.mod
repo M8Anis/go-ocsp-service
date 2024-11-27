@@ -6,6 +6,7 @@ require (
 	github.com/dgraph-io/badger/v4 v4.4.0 // direct
 	github.com/gorilla/mux v1.8.1 // direct
 	github.com/sirupsen/logrus v1.9.3 // direct
+	github.com/spf13/pflag v1.0.5 // direct
 	golang.org/x/crypto v0.29.0 // direct
 )
 
