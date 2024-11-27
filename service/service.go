@@ -4,43 +4,44 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"time"
 
+	ocspresponder "gitea.m8anis.internal/M8Anis/go-ocsp-service/ocsp-responder"
 	"github.com/dgraph-io/badger/v4"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/crypto/ocsp"
 )
 
+var instance *ocspresponder.OCSPResponder
+
 func Serve(host, dbPath string, caCert, responderCert *x509.Certificate, responderPrivkey crypto.Signer) {
-	// Database
+	r := mux.NewRouter()
+	registerRoutes(r)
+
 	db, err := badger.Open(badger.DefaultOptions(dbPath))
 	if err != nil {
 		logrus.Fatal(err)
 	}
 	defer db.Close()
 
-	// OCSP
-	resp := ocsp.Response{}
+	instance = &ocspresponder.OCSPResponder{
+		CaCertificate: caCert,
 
-	// HTTP
-	r := mux.NewRouter()
-	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "%s", resp.Raw)
-	})
+		Certificate: responderCert,
+		PrivateKey:  responderPrivkey,
 
-	s := &http.Server{
-		Handler: r,
-
-		Addr: host,
+		Database: db,
+		Server: &http.Server{
+			Handler: r,
+			Addr:    host,
+		},
 	}
 
 	go func() {
-		s.ListenAndServe()
+		instance.Server.ListenAndServe()
 	}()
 
 	// Wait to close
@@ -51,5 +52,13 @@ func Serve(host, dbPath string, caCert, responderCert *x509.Certificate, respond
 	// Closing
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	s.Shutdown(ctx)
+	instance.Server.Shutdown(ctx)
+}
+
+func registerRoutes(r *mux.Router) {
+	r.HandleFunc("/", handleRequest).
+		Methods(http.MethodPost)
+
+	r.HandleFunc("/{b64Req}", handleRequestInURL).
+		Methods(http.MethodGet)
 }
