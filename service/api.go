@@ -8,17 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"gitea.m8anis.internal/M8Anis/go-ocsp-service/responder"
 	"github.com/dgraph-io/badger/v4"
 	"github.com/sirupsen/logrus"
 )
-
-// MarshalBinary of zeroed time.Time
-var RAW_ZERO_TIMESTAMP = []byte{
-	0x01,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00,
-	0xFF, 0xFF,
-}
 
 const DER_CERTIFICATE_CONTENT_TYPE string = "application/pkix-cert"
 
@@ -66,7 +59,7 @@ func addNewCertificate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := instance.Database.Update(func(txn *badger.Txn) error {
-		err = txn.Set(cert.SerialNumber.Bytes(), RAW_ZERO_TIMESTAMP)
+		err = txn.Set(cert.SerialNumber.Bytes(), responder.RAW_ZERO_TIMESTAMP)
 		if err != nil {
 			return err
 		}
