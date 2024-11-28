@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -12,6 +13,12 @@ import (
 )
 
 func handleRequest(w http.ResponseWriter, r *http.Request) {
+	contentType := strings.ToLower(r.Header.Get("Content-Type"))
+	if contentType != "application/ocsp-request" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	defer r.Body.Close()
 	derReq, err := io.ReadAll(r.Body)
 	if err != nil {

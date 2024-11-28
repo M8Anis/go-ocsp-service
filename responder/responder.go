@@ -50,21 +50,10 @@ func (responder *OCSPResponder) MakeResponse(derReq []byte) (derResp []byte, ret
 		return
 	}
 
-	var rawRevokeTime, resp []byte
+	var revokedAt time.Time
+	var resp []byte
 
-	if err := responder.Database.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(req.SerialNumber.Bytes())
-		if err != nil {
-			return err
-		}
-
-		rawRevokeTime, err = item.ValueCopy(nil)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	}); err != nil {
+	if revokedAt, err = responder.RevocationTime(req.SerialNumber.Bytes()); err != nil {
 		if err == badger.ErrKeyNotFound {
 			if resp, err = responder.Response(req.SerialNumber, ocsp.Unknown); err != nil {
 				logrus.Errorf("Response can't be created: %s", err)
@@ -90,20 +79,9 @@ func (responder *OCSPResponder) MakeResponse(derReq []byte) (derResp []byte, ret
 		}
 	}
 
-	var revokedAt time.Time
-	if err := revokedAt.UnmarshalBinary(rawRevokeTime); err != nil {
-		logrus.Errorf("Can't be decode revocation date: %s", err)
-		retrieveErr = &RetrieveError{
-			Code: http.StatusInternalServerError,
-			Body: ocsp.InternalErrorErrorResponse,
-		}
-		return
-	}
-
-	switch revokedAt.Unix() {
-	case 0:
+	if revokedAt.IsZero() {
 		derResp, err = responder.Response(req.SerialNumber, ocsp.Good)
-	default:
+	} else {
 		derResp, err = responder.ResponseRevoked(req.SerialNumber, revokedAt)
 	}
 
@@ -189,4 +167,26 @@ func (responder *OCSPResponder) UpdateEntriesFromCRL() {
 
 		return nil
 	})
+}
+
+func (responder *OCSPResponder) RevocationTime(certificateSerial []byte) (at time.Time, err error) {
+	err = responder.Database.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(certificateSerial)
+		if err != nil {
+			return err
+		}
+
+		rawRevokeTime, err := item.ValueCopy(nil)
+		if err != nil {
+			return err
+		}
+
+		if err := at.UnmarshalBinary(rawRevokeTime); err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	return
 }
