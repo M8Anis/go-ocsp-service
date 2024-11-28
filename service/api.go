@@ -19,7 +19,7 @@ func addNewCertificate(w http.ResponseWriter, r *http.Request) {
 	contentType := strings.ToLower(r.Header.Get("Content-Type"))
 	if DER_CERTIFICATE_CONTENT_TYPE != contentType {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Mismatch `Content-Type`: %s != %s", DER_CERTIFICATE_CONTENT_TYPE, contentType)
+		fmt.Fprintf(w, "Mismatch `Content-Type` (%s != %s)", DER_CERTIFICATE_CONTENT_TYPE, contentType)
 		return
 	}
 
@@ -47,7 +47,7 @@ func addNewCertificate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if revokedAt, err := instance.RevocationTime(cert.SerialNumber.Bytes()); err != nil && err != badger.ErrKeyNotFound {
-		logrus.Errorf("Can't be check certificate revocation: %s", err)
+		logrus.Errorf("Cannot check certificate revocation: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	} else {
@@ -66,7 +66,7 @@ func addNewCertificate(w http.ResponseWriter, r *http.Request) {
 
 		return nil
 	}); err != nil {
-		logrus.Errorf("Can't be add certificate to database: %s", err)
+		logrus.Errorf("Cannot add certificate to database: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

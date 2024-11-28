@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"errors"
 	"math/big"
 	"net/http"
 	"slices"
@@ -59,10 +58,10 @@ func (responder *OCSPResponder) MakeResponse(derReq []byte) (derResp []byte, ret
 	}
 
 	var revokedAt time.Time
-	var resp []byte
 
 	if revokedAt, err = responder.RevocationTime(req.SerialNumber.Bytes()); err != nil {
 		if err == badger.ErrKeyNotFound {
+			var resp []byte
 			if resp, err = responder.Response(req.SerialNumber, ocsp.Unknown); err != nil {
 				logrus.Errorf("Response can't be created: %s", err)
 				retrieveErr = &RetrieveError{
@@ -78,7 +77,7 @@ func (responder *OCSPResponder) MakeResponse(derReq []byte) (derResp []byte, ret
 			}
 			return
 		} else {
-			logrus.Errorf("Can't be retrieve certificate: %s", err)
+			logrus.Errorf("Cannot retrieve certificate: %s", err)
 			retrieveErr = &RetrieveError{
 				Code: http.StatusInternalServerError,
 				Body: ocsp.InternalErrorErrorResponse,
@@ -90,7 +89,7 @@ func (responder *OCSPResponder) MakeResponse(derReq []byte) (derResp []byte, ret
 	if revokedAt.IsZero() {
 		derResp, err = responder.Response(req.SerialNumber, ocsp.Good)
 	} else {
-		derResp, err = responder.ResponseRevoked(req.SerialNumber, revokedAt)
+		derResp, err = responder.RevokedResponse(req.SerialNumber, revokedAt)
 	}
 
 	if err != nil {
@@ -108,11 +107,11 @@ func (responder *OCSPResponder) MakeResponse(derReq []byte) (derResp []byte, ret
 // Checker Issuer hashes
 func (responder *OCSPResponder) Valid(req *ocsp.Request) bool {
 	var publicKeyInfo struct {
-		Algorithm pkix.AlgorithmIdentifier
+		_         pkix.AlgorithmIdentifier
 		PublicKey asn1.BitString
 	}
 	if _, err := asn1.Unmarshal(responder.CaCertificate.RawSubjectPublicKeyInfo, &publicKeyInfo); err != nil {
-		logrus.Errorf("Can't be decode subject public key info: %s", err)
+		logrus.Errorf("Cannot decode subject public key info: %s", err)
 
 		return false
 	}
@@ -134,7 +133,7 @@ func (responder *OCSPResponder) Response(serialNumber *big.Int, status int) (der
 	case ocsp.Unknown:
 		break
 	default:
-		return nil, errors.New("Uncorrect response status")
+		logrus.Fatalf("Uncorrect response status (%d)", status)
 	}
 
 	return responder.createResponse(&ocsp.Response{
@@ -143,7 +142,7 @@ func (responder *OCSPResponder) Response(serialNumber *big.Int, status int) (der
 	})
 }
 
-func (responder *OCSPResponder) ResponseRevoked(serialNumber *big.Int, at time.Time) (derResp []byte, err error) {
+func (responder *OCSPResponder) RevokedResponse(serialNumber *big.Int, at time.Time) (derResp []byte, err error) {
 	return responder.createResponse(&ocsp.Response{
 		SerialNumber: serialNumber,
 		Status:       ocsp.Revoked,
@@ -163,13 +162,13 @@ func (responder *OCSPResponder) createResponse(template *ocsp.Response) (derResp
 func (responder *OCSPResponder) UpdateEntriesFromCRL() {
 	responder.Database.Update(func(txn *badger.Txn) error {
 		for _, entry := range responder.RevocationList.RevokedCertificateEntries {
-			if binaryTime, err := entry.RevocationTime.MarshalBinary(); err == nil {
-				err = txn.Set(entry.SerialNumber.Bytes(), binaryTime)
+			if timeEncoded, err := entry.RevocationTime.MarshalBinary(); err == nil {
+				err = txn.Set(entry.SerialNumber.Bytes(), timeEncoded)
 				if err != nil {
-					logrus.Fatalf("Can't be set revocation date in entry: %s", err)
+					logrus.Fatalf("Cannot set revocation date in entry: %s", err)
 				}
 			} else {
-				logrus.Fatalf("Can't be encode revocation date: %s", err)
+				logrus.Fatalf("Cannot encode revocation date: %s", err)
 			}
 		}
 
