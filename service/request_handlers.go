@@ -12,9 +12,12 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
+const OCSP_REQUEST_CONTENT_TYPE string = "application/ocsp-request"
+const OCSP_RESPONSE_CONTENT_TYPE string = "application/ocsp-response"
+
 func handleRequest(w http.ResponseWriter, r *http.Request) {
 	contentType := strings.ToLower(r.Header.Get("Content-Type"))
-	if contentType != "application/ocsp-request" {
+	if OCSP_REQUEST_CONTENT_TYPE != contentType {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -55,7 +58,7 @@ func handleRequestInURL(w http.ResponseWriter, r *http.Request) {
 }
 
 func sendResponse(w http.ResponseWriter, statusCode int, ocspResponse []byte) {
-	w.Header().Add("Content-Type", "application/ocsp-response")
+	w.Header().Add("Content-Type", OCSP_RESPONSE_CONTENT_TYPE)
 	w.WriteHeader(statusCode)
 	fmt.Fprintf(w, "%s", ocspResponse)
 }
