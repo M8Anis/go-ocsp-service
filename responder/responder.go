@@ -1,4 +1,4 @@
-package ocspresponder
+package responder
 
 import (
 	"crypto"

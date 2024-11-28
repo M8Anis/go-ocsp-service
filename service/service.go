@@ -9,13 +9,13 @@ import (
 	"os/signal"
 	"time"
 
-	ocspresponder "gitea.m8anis.internal/M8Anis/go-ocsp-service/ocsp-responder"
+	"gitea.m8anis.internal/M8Anis/go-ocsp-service/responder"
 	"github.com/dgraph-io/badger/v4"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 )
 
-var instance *ocspresponder.OCSPResponder
+var instance *responder.OCSPResponder
 
 func Serve(host, dbPath string, caCrl *x509.RevocationList, caCert, responderCert *x509.Certificate, responderPrivkey crypto.Signer) {
 	r := mux.NewRouter()
@@ -27,7 +27,7 @@ func Serve(host, dbPath string, caCrl *x509.RevocationList, caCert, responderCer
 	}
 	defer db.Close()
 
-	instance = &ocspresponder.OCSPResponder{
+	instance = &responder.OCSPResponder{
 		RevocationList: caCrl,
 		CaCertificate:  caCert,
 
