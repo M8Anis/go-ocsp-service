@@ -5,7 +5,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"encoding/binary"
+	"errors"
+	"math/big"
 	"net/http"
 	"slices"
 	"time"
@@ -21,6 +22,7 @@ type RetrieveError struct {
 }
 
 type OCSPResponder struct {
+	RevocationList             *x509.RevocationList
 	CaCertificate, Certificate *x509.Certificate
 	PrivateKey                 crypto.Signer
 
@@ -48,7 +50,7 @@ func (responder *OCSPResponder) MakeResponse(derReq []byte) (derResp []byte, ret
 		return
 	}
 
-	var status, resp []byte
+	var rawRevokeTime, resp []byte
 
 	if err := responder.Database.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(req.SerialNumber.Bytes())
@@ -56,7 +58,7 @@ func (responder *OCSPResponder) MakeResponse(derReq []byte) (derResp []byte, ret
 			return err
 		}
 
-		status, err = item.ValueCopy(nil)
+		rawRevokeTime, err = item.ValueCopy(nil)
 		if err != nil {
 			return err
 		}
@@ -64,12 +66,7 @@ func (responder *OCSPResponder) MakeResponse(derReq []byte) (derResp []byte, ret
 		return nil
 	}); err != nil {
 		if err == badger.ErrKeyNotFound {
-			if resp, err = responder.Response(&ocsp.Response{
-				SerialNumber: req.SerialNumber,
-				Status:       ocsp.Unknown,
-				ThisUpdate:   time.Now(),
-				NextUpdate:   time.Now().AddDate(0, 0, 1).Add(-time.Second),
-			}); err != nil {
+			if resp, err = responder.Response(req.SerialNumber, ocsp.Unknown); err != nil {
 				logrus.Errorf("Response can't be created: %s", err)
 				retrieveErr = &RetrieveError{
 					Code: http.StatusInternalServerError,
@@ -93,36 +90,30 @@ func (responder *OCSPResponder) MakeResponse(derReq []byte) (derResp []byte, ret
 		}
 	}
 
-	switch binary.BigEndian.Uint64(status) {
+	var revokedAt time.Time
+	if err := revokedAt.UnmarshalBinary(rawRevokeTime); err != nil {
+		logrus.Errorf("Can't be decode revocation date: %s", err)
+		retrieveErr = &RetrieveError{
+			Code: http.StatusInternalServerError,
+			Body: ocsp.InternalErrorErrorResponse,
+		}
+		return
+	}
+
+	switch revokedAt.Unix() {
 	case 0:
-		if derResp, err = responder.Response(&ocsp.Response{
-			SerialNumber: req.SerialNumber,
-			Status:       ocsp.Good,
-			ThisUpdate:   time.Now(),
-			NextUpdate:   time.Now().AddDate(0, 0, 1).Add(-time.Second),
-		}); err != nil {
-			logrus.Errorf("Response can't be created: %s", err)
-			retrieveErr = &RetrieveError{
-				Code: http.StatusInternalServerError,
-				Body: ocsp.InternalErrorErrorResponse,
-			}
-			return
-		}
+		derResp, err = responder.Response(req.SerialNumber, ocsp.Good)
 	default:
-		if derResp, err = responder.Response(&ocsp.Response{
-			SerialNumber: req.SerialNumber,
-			Status:       ocsp.Revoked,
-			RevokedAt:    time.Unix(int64(binary.BigEndian.Uint64(status)), 0),
-			ThisUpdate:   time.Now(),
-			NextUpdate:   time.Now().AddDate(0, 0, 1).Add(-time.Second),
-		}); err != nil {
-			logrus.Errorf("Response can't be created: %s", err)
-			retrieveErr = &RetrieveError{
-				Code: http.StatusInternalServerError,
-				Body: ocsp.InternalErrorErrorResponse,
-			}
-			return
+		derResp, err = responder.ResponseRevoked(req.SerialNumber, revokedAt)
+	}
+
+	if err != nil {
+		logrus.Errorf("Response can't be created: %s", err)
+		retrieveErr = &RetrieveError{
+			Code: http.StatusInternalServerError,
+			Body: ocsp.InternalErrorErrorResponse,
 		}
+		return
 	}
 
 	return
@@ -151,7 +142,51 @@ func (responder *OCSPResponder) Valid(req *ocsp.Request) bool {
 	return slices.Equal(req.IssuerKeyHash, issuerKeyHash) && slices.Equal(req.IssuerNameHash, issuerNameHash)
 }
 
-func (responder *OCSPResponder) Response(template *ocsp.Response) (derResp []byte, err error) {
+func (responder *OCSPResponder) Response(serialNumber *big.Int, status int) (derResp []byte, err error) {
+	switch status {
+	case ocsp.Good:
+	case ocsp.Unknown:
+		break
+	default:
+		return nil, errors.New("Uncorrect response status")
+	}
+
+	return responder.createResponse(&ocsp.Response{
+		SerialNumber: serialNumber,
+		Status:       status,
+	})
+}
+
+func (responder *OCSPResponder) ResponseRevoked(serialNumber *big.Int, at time.Time) (derResp []byte, err error) {
+	return responder.createResponse(&ocsp.Response{
+		SerialNumber: serialNumber,
+		Status:       ocsp.Revoked,
+
+		RevokedAt:        at,
+		RevocationReason: ocsp.Unspecified,
+	})
+}
+
+func (responder *OCSPResponder) createResponse(template *ocsp.Response) (derResp []byte, err error) {
+	template.ThisUpdate = responder.RevocationList.ThisUpdate
+	template.NextUpdate = responder.RevocationList.NextUpdate
 	derResp, err = ocsp.CreateResponse(responder.CaCertificate, responder.Certificate, *template, responder.PrivateKey)
 	return
+}
+
+func (responder *OCSPResponder) UpdateEntriesFromCRL() {
+	responder.Database.Update(func(txn *badger.Txn) error {
+		for _, entry := range responder.RevocationList.RevokedCertificateEntries {
+			if binaryTime, err := entry.RevocationTime.MarshalBinary(); err == nil {
+				err = txn.Set(entry.SerialNumber.Bytes(), binaryTime)
+				if err != nil {
+					logrus.Fatalf("Can't be set revocation date in entry: %s", err)
+				}
+			} else {
+				logrus.Fatalf("Can't be encode revocation date: %s", err)
+			}
+		}
+
+		return nil
+	})
 }

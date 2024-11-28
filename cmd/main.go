@@ -125,6 +125,7 @@ func main() {
 	service.Serve(
 		fmt.Sprintf("%s:%d", _address, _port),
 		_db_path,
-		_issuer, _cert, _priv,
+		_crl, _issuer,
+		_cert, _priv,
 	)
 }

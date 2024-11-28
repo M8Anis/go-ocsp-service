@@ -17,7 +17,7 @@ import (
 
 var instance *ocspresponder.OCSPResponder
 
-func Serve(host, dbPath string, caCert, responderCert *x509.Certificate, responderPrivkey crypto.Signer) {
+func Serve(host, dbPath string, caCrl *x509.RevocationList, caCert, responderCert *x509.Certificate, responderPrivkey crypto.Signer) {
 	r := mux.NewRouter()
 	registerRoutes(r)
 
@@ -28,7 +28,8 @@ func Serve(host, dbPath string, caCert, responderCert *x509.Certificate, respond
 	defer db.Close()
 
 	instance = &ocspresponder.OCSPResponder{
-		CaCertificate: caCert,
+		RevocationList: caCrl,
+		CaCertificate:  caCert,
 
 		Certificate: responderCert,
 		PrivateKey:  responderPrivkey,
@@ -39,6 +40,7 @@ func Serve(host, dbPath string, caCert, responderCert *x509.Certificate, respond
 			Addr:    host,
 		},
 	}
+	instance.UpdateEntriesFromCRL()
 
 	go func() {
 		instance.Server.ListenAndServe()
