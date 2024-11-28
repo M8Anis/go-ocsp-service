@@ -16,29 +16,32 @@ import (
 )
 
 var (
+	_issuer_path string
+	_db_path     string
+	_crl_path    string
+
 	_address string
 	_port    uint16
 
-	_db_path string
-
 	_cert_path, _priv_path string
-	_issuer_path           string
 )
 
 var (
-	_cert, _issuer *x509.Certificate
+	_crl           *x509.RevocationList
+	_issuer, _cert *x509.Certificate
 	_priv          crypto.Signer
 )
 
 func init() {
+	flag.StringVarP(&_issuer_path, "authority-certificate", "i", "./certs/issuer.pem", "Path to CA that issued responder certificate")
 	flag.StringVarP(&_db_path, "database", "d", "./db", "Path to database store")
-
-	flag.StringVarP(&_issuer_path, "ca-certificate", "i", "./certs/issuer.pem", "Path to CA that issued responder certificate")
-	flag.StringVarP(&_cert_path, "certificate", "c", "./certs/responder.pem", "Path to responder certificate")
-	flag.StringVarP(&_priv_path, "key", "k", "./private/key.pem", "Path to responder certificate private key")
+	flag.StringVarP(&_crl_path, "revocation-list", "r", "./crl.pem", "Path to CRL")
 
 	flag.StringVarP(&_address, "address", "a", "127.251.209.16", "IP to run on")
 	flag.Uint16VarP(&_port, "port", "p", 19721, "Port to run on")
+
+	flag.StringVarP(&_cert_path, "certificate", "c", "./certs/responder.pem", "Path to responder certificate")
+	flag.StringVarP(&_priv_path, "key", "k", "./private/key.pem", "Path to responder certificate private key")
 
 	flag.Parse()
 }
@@ -100,7 +103,21 @@ func init() {
 	}
 
 	if err := _cert.CheckSignatureFrom(_issuer); err != nil {
-		logrus.Fatalf("Responder certificate not been issued by gived CA")
+		logrus.Fatalf("Responder certificate not been issued by gived CA (%s)", err)
+	}
+
+	if crlFile, err := os.ReadFile(_crl_path); err == nil {
+		pemCrl, _ := pem.Decode(crlFile)
+
+		if _crl, err = x509.ParseRevocationList(pemCrl.Bytes); err != nil {
+			logrus.Fatalf("Cannot parse revocation list: %s", err)
+		}
+	} else {
+		logrus.Fatalf("Cannot read revocation list: %s", err)
+	}
+
+	if err := _crl.CheckSignatureFrom(_issuer); err != nil {
+		logrus.Fatalf("Revocation list not been created by gived CA (%s)", err)
 	}
 }
 
