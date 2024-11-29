@@ -48,7 +48,7 @@ func (responder *OCSPResponder) MakeResponse(derReq []byte) (derResp []byte, ret
 		return
 	}
 
-	if !responder.Valid(req) {
+	if !responder.issuerIsValid(req) {
 		logrus.Info("Misdirected request")
 		retrieveErr = &RetrieveError{
 			Code: http.StatusMisdirectedRequest,
@@ -62,7 +62,7 @@ func (responder *OCSPResponder) MakeResponse(derReq []byte) (derResp []byte, ret
 	if revokedAt, err = responder.RevocationTime(req.SerialNumber.Bytes()); err != nil {
 		if err == badger.ErrKeyNotFound {
 			var resp []byte
-			if resp, err = responder.Response(req.SerialNumber, ocsp.Unknown); err != nil {
+			if resp, err = responder.response(req.SerialNumber, ocsp.Unknown); err != nil {
 				logrus.Errorf("Response can't be created: %s", err)
 				retrieveErr = &RetrieveError{
 					Code: http.StatusInternalServerError,
@@ -87,9 +87,9 @@ func (responder *OCSPResponder) MakeResponse(derReq []byte) (derResp []byte, ret
 	}
 
 	if revokedAt.IsZero() {
-		derResp, err = responder.Response(req.SerialNumber, ocsp.Good)
+		derResp, err = responder.response(req.SerialNumber, ocsp.Good)
 	} else {
-		derResp, err = responder.RevokedResponse(req.SerialNumber, revokedAt)
+		derResp, err = responder.revokedResponse(req.SerialNumber, revokedAt)
 	}
 
 	if err != nil {
@@ -105,7 +105,7 @@ func (responder *OCSPResponder) MakeResponse(derReq []byte) (derResp []byte, ret
 }
 
 // Checker Issuer hashes
-func (responder *OCSPResponder) Valid(req *ocsp.Request) bool {
+func (responder *OCSPResponder) issuerIsValid(req *ocsp.Request) bool {
 	var publicKeyInfo struct {
 		Algorithm pkix.AlgorithmIdentifier
 		PublicKey asn1.BitString
@@ -127,7 +127,7 @@ func (responder *OCSPResponder) Valid(req *ocsp.Request) bool {
 	return slices.Equal(req.IssuerKeyHash, issuerKeyHash) && slices.Equal(req.IssuerNameHash, issuerNameHash)
 }
 
-func (responder *OCSPResponder) Response(serialNumber *big.Int, status int) (derResp []byte, err error) {
+func (responder *OCSPResponder) response(serialNumber *big.Int, status int) (derResp []byte, err error) {
 	switch status {
 	case ocsp.Good:
 	case ocsp.Unknown:
@@ -142,7 +142,7 @@ func (responder *OCSPResponder) Response(serialNumber *big.Int, status int) (der
 	})
 }
 
-func (responder *OCSPResponder) RevokedResponse(serialNumber *big.Int, at time.Time) (derResp []byte, err error) {
+func (responder *OCSPResponder) revokedResponse(serialNumber *big.Int, at time.Time) (derResp []byte, err error) {
 	return responder.createResponse(&ocsp.Response{
 		SerialNumber: serialNumber,
 		Status:       ocsp.Revoked,
