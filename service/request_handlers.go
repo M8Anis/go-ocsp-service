@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -41,7 +42,13 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 func handleRequestInURL(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
-	pemReq := vars["b64Req"]
+	pemReq, err := url.QueryUnescape(vars["b64Req"])
+	if err != nil {
+		logrus.Infof("Request can't be unescaped: %s", err)
+		sendResponse(w, http.StatusBadRequest, ocsp.MalformedRequestErrorResponse)
+		return
+	}
+
 	derReq, err := base64.StdEncoding.DecodeString(pemReq)
 	if err != nil {
 		logrus.Infof("PEM request can't be decoded: %s", err)

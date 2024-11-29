@@ -61,7 +61,8 @@ func registerRoutes(r *mux.Router) {
 	r.HandleFunc("/", handleRequest).
 		Methods(http.MethodPost)
 
-	r.HandleFunc("/{b64Req}", handleRequestInURL).
+	r.UseEncodedPath().
+		HandleFunc("/{b64Req}", handleRequestInURL).
 		Methods(http.MethodGet)
 
 	r.HandleFunc("/api/certificate", addNewCertificate).
