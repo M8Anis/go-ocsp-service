@@ -104,7 +104,6 @@ func (responder *OCSPResponder) MakeResponse(derReq []byte) (derResp []byte, ret
 	return
 }
 
-// Checker Issuer hashes
 func (responder *OCSPResponder) issuerIsValid(req *ocsp.Request) bool {
 	var publicKeyInfo struct {
 		Algorithm pkix.AlgorithmIdentifier

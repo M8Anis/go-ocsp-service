@@ -46,12 +46,10 @@ func Serve(host, dbPath string, caCrl *x509.RevocationList, caCert, responderCer
 		instance.Server.ListenAndServe()
 	}()
 
-	// Wait to close
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	<-c
 
-	// Closing
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	instance.Server.Shutdown(ctx)
