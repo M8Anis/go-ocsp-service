@@ -107,7 +107,7 @@ func (responder *OCSPResponder) MakeResponse(derReq []byte) (derResp []byte, ret
 // Checker Issuer hashes
 func (responder *OCSPResponder) Valid(req *ocsp.Request) bool {
 	var publicKeyInfo struct {
-		_         pkix.AlgorithmIdentifier
+		Algorithm pkix.AlgorithmIdentifier
 		PublicKey asn1.BitString
 	}
 	if _, err := asn1.Unmarshal(responder.CaCertificate.RawSubjectPublicKeyInfo, &publicKeyInfo); err != nil {
@@ -153,8 +153,7 @@ func (responder *OCSPResponder) RevokedResponse(serialNumber *big.Int, at time.T
 }
 
 func (responder *OCSPResponder) createResponse(template *ocsp.Response) (derResp []byte, err error) {
-	template.ThisUpdate = responder.RevocationList.ThisUpdate
-	template.NextUpdate = responder.RevocationList.NextUpdate
+	template.ThisUpdate = time.Now()
 	derResp, err = ocsp.CreateResponse(responder.CaCertificate, responder.Certificate, *template, responder.PrivateKey)
 	return
 }
