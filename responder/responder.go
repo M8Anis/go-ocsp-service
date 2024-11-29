@@ -153,7 +153,8 @@ func (responder *OCSPResponder) revokedResponse(serialNumber *big.Int, at time.T
 }
 
 func (responder *OCSPResponder) createResponse(template *ocsp.Response) (derResp []byte, err error) {
-	template.ThisUpdate = time.Now()
+	template.ThisUpdate = time.Now().Truncate(time.Minute)
+	template.NextUpdate = template.ThisUpdate.Add(9 * time.Minute)
 	template.Certificate = responder.Certificate
 	derResp, err = ocsp.CreateResponse(responder.CaCertificate, responder.Certificate, *template, responder.PrivateKey)
 	return

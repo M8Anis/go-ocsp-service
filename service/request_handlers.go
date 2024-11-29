@@ -19,7 +19,7 @@ const OCSP_RESPONSE_CONTENT_TYPE string = "application/ocsp-response"
 func handleRequest(w http.ResponseWriter, r *http.Request) {
 	contentType := strings.ToLower(r.Header.Get("Content-Type"))
 	if OCSP_REQUEST_CONTENT_TYPE != contentType {
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(http.StatusUnsupportedMediaType)
 		return
 	}
 
