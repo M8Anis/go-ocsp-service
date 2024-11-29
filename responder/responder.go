@@ -165,10 +165,10 @@ func (responder *OCSPResponder) UpdateEntriesFromCRL() {
 			if timeEncoded, err := entry.RevocationTime.MarshalBinary(); err == nil {
 				err = txn.Set(entry.SerialNumber.Bytes(), timeEncoded)
 				if err != nil {
-					logrus.Fatalf("Cannot set revocation date in entry: %s", err)
+					logrus.Errorf("Cannot set revocation date in entry: %s", err)
 				}
 			} else {
-				logrus.Fatalf("Cannot encode revocation date: %s", err)
+				logrus.Errorf("Cannot encode revocation date: %s", err)
 			}
 		}
 

@@ -66,4 +66,7 @@ func registerRoutes(r *mux.Router) {
 
 	r.HandleFunc("/api/certificate", addNewCertificate).
 		Methods(http.MethodPost)
+
+	r.HandleFunc("/api/revocation-list", updateRevocationList).
+		Methods(http.MethodPut)
 }

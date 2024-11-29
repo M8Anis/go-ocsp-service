@@ -14,6 +14,7 @@ import (
 )
 
 const DER_CERTIFICATE_CONTENT_TYPE string = "application/pkix-cert"
+const DER_REVOCATION_LIST_CONTENT_TYPE string = "application/pkix-crl"
 
 func addNewCertificate(w http.ResponseWriter, r *http.Request) {
 	contentType := strings.ToLower(r.Header.Get("Content-Type"))
@@ -70,6 +71,51 @@ func addNewCertificate(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+
+	w.WriteHeader(http.StatusOK)
+	return
+}
+
+func updateRevocationList(w http.ResponseWriter, r *http.Request) {
+	contentType := strings.ToLower(r.Header.Get("Content-Type"))
+	if DER_REVOCATION_LIST_CONTENT_TYPE != contentType {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Mismatch `Content-Type` (%s != %s)", DER_REVOCATION_LIST_CONTENT_TYPE, contentType)
+		return
+	}
+
+	defer r.Body.Close()
+	derCrl, err := io.ReadAll(r.Body)
+	if err != nil {
+		logrus.Errorf("Body can't be reader: %s", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	var crl *x509.RevocationList
+	if crl, err = x509.ParseRevocationList(derCrl); err != nil {
+		logrus.Infof("Cannot parse revocation list: %s", err)
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, "Malformed revocation list")
+		return
+	}
+
+	if err := crl.CheckSignatureFrom(instance.CaCertificate); err != nil {
+		logrus.Errorf("Incorrect revocation list (%s)", err)
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, "Invalid revocation list")
+		return
+	}
+
+	if crl.Number.Cmp(instance.RevocationList.Number) < 0 {
+		logrus.Warn("Out of order revocation list uploaded (Number in uploaded CRL less than known)")
+		w.WriteHeader(http.StatusPreconditionFailed)
+		fmt.Fprint(w, "Out of order revocation list")
+		return
+	}
+
+	instance.RevocationList = crl
+	go instance.UpdateEntriesFromCRL()
 
 	w.WriteHeader(http.StatusOK)
 	return
