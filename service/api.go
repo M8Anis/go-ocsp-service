@@ -47,6 +47,8 @@ func addNewCertificate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	status := http.StatusCreated
+
 	if revokedAt, err := instance.RevocationTime(cert.SerialNumber.Bytes()); err != nil && err != badger.ErrKeyNotFound {
 		logrus.Errorf("Cannot check certificate revocation: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -57,6 +59,7 @@ func addNewCertificate(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "Certificate revoked at %s", revokedAt.UTC().Format(time.RFC3339))
 			return
 		}
+		status = http.StatusOK
 	}
 
 	if err := instance.Database.Update(func(txn *badger.Txn) error {
@@ -72,7 +75,7 @@ func addNewCertificate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(status)
 	return
 }
 
