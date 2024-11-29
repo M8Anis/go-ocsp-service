@@ -42,11 +42,14 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 func handleRequestInURL(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
-	pemReq, err := url.QueryUnescape(vars["b64Req"])
-	if err != nil {
-		logrus.Infof("Request can't be unescaped: %s", err)
-		sendResponse(w, http.StatusBadRequest, ocsp.MalformedRequestErrorResponse)
-		return
+	pemReq := vars["b64Req"]
+	if strings.Contains(pemReq, "%s") {
+		var err error
+		if pemReq, err = url.QueryUnescape(pemReq); err != nil {
+			logrus.Infof("Request can't be unescaped: %s", err)
+			sendResponse(w, http.StatusBadRequest, ocsp.MalformedRequestErrorResponse)
+			return
+		}
 	}
 
 	derReq, err := base64.StdEncoding.DecodeString(pemReq)
