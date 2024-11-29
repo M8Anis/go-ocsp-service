@@ -2,11 +2,9 @@ package service
 
 import (
 	"crypto/x509"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"gitea.m8anis.internal/M8Anis/go-ocsp-service/responder"
 	"github.com/dgraph-io/badger/v4"
@@ -19,8 +17,7 @@ const DER_REVOCATION_LIST_CONTENT_TYPE string = "application/pkix-crl"
 func addNewCertificate(w http.ResponseWriter, r *http.Request) {
 	contentType := strings.ToLower(r.Header.Get("Content-Type"))
 	if DER_CERTIFICATE_CONTENT_TYPE != contentType {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Mismatch `Content-Type` (%s != %s)", DER_CERTIFICATE_CONTENT_TYPE, contentType)
+		w.WriteHeader(http.StatusUnsupportedMediaType)
 		return
 	}
 
@@ -36,14 +33,12 @@ func addNewCertificate(w http.ResponseWriter, r *http.Request) {
 	if cert, err = x509.ParseCertificate(derCert); err != nil {
 		logrus.Infof("Cannot parse certificate: %s", err)
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, "Malformed certificate")
 		return
 	}
 
 	if err := cert.CheckSignatureFrom(instance.CaCertificate); err != nil {
 		logrus.Errorf("Incorrect certificate uploaded (%s)", err)
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, "Invalid certificate")
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
@@ -56,7 +51,6 @@ func addNewCertificate(w http.ResponseWriter, r *http.Request) {
 	} else {
 		if !revokedAt.IsZero() {
 			w.WriteHeader(http.StatusPreconditionFailed)
-			fmt.Fprintf(w, "Certificate revoked at %s", revokedAt.UTC().Format(time.RFC3339))
 			return
 		}
 		status = http.StatusOK
@@ -82,8 +76,7 @@ func addNewCertificate(w http.ResponseWriter, r *http.Request) {
 func updateRevocationList(w http.ResponseWriter, r *http.Request) {
 	contentType := strings.ToLower(r.Header.Get("Content-Type"))
 	if DER_REVOCATION_LIST_CONTENT_TYPE != contentType {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Mismatch `Content-Type` (%s != %s)", DER_REVOCATION_LIST_CONTENT_TYPE, contentType)
+		w.WriteHeader(http.StatusUnsupportedMediaType)
 		return
 	}
 
@@ -99,22 +92,25 @@ func updateRevocationList(w http.ResponseWriter, r *http.Request) {
 	if crl, err = x509.ParseRevocationList(derCrl); err != nil {
 		logrus.Infof("Cannot parse revocation list: %s", err)
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, "Malformed revocation list")
 		return
 	}
 
 	if err := crl.CheckSignatureFrom(instance.CaCertificate); err != nil {
 		logrus.Errorf("Incorrect revocation list (%s)", err)
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, "Invalid revocation list")
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
-	if crl.Number.Cmp(instance.RevocationList.Number) < 0 {
+	switch crl.Number.Cmp(instance.RevocationList.Number) {
+	case -1:
 		logrus.Warn("Out of order revocation list uploaded (Number in uploaded CRL less than known)")
-		w.WriteHeader(http.StatusPreconditionFailed)
-		fmt.Fprint(w, "Out of order revocation list")
+		w.WriteHeader(http.StatusConflict)
 		return
+	case 0:
+		w.WriteHeader(http.StatusNoContent)
+		return
+	default:
+		break
 	}
 
 	instance.RevocationList = crl
