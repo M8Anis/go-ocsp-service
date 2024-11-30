@@ -43,7 +43,7 @@ func handleRequestInURL(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
 	pemReq := vars["b64Req"]
-	if strings.Contains(pemReq, "%s") {
+	for strings.Contains(pemReq, "%") {
 		var err error
 		if pemReq, err = url.QueryUnescape(pemReq); err != nil {
 			logrus.Infof("Request can't be unescaped: %s", err)
