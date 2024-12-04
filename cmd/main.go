@@ -19,6 +19,7 @@ var (
 	_cacert_file string
 	_crl_file    string
 	_db_path     string
+	_time_diff   uint32
 
 	_address string
 	_port    uint16
@@ -36,6 +37,7 @@ func init() {
 	flag.StringVarP(&_cacert_file, "authority-certificate", "i", "./certs/ca.pem", "Path to CA certificate that issued responder certificate")
 	flag.StringVarP(&_crl_file, "revocation-list", "r", "./crl.pem", "Path to CA CRL")
 	flag.StringVarP(&_db_path, "database", "d", "./db", "Path to responder database store")
+	flag.Uint32VarP(&_time_diff, "time-difference", "t", 90, "Difference in minutes between ThisUpdate and NextUpdate fields")
 
 	flag.StringVarP(&_address, "address", "a", "127.251.209.16", "IP to run on")
 	flag.Uint16VarP(&_port, "port", "p", 19721, "Port to run on")
@@ -127,5 +129,6 @@ func main() {
 		_db_path,
 		_crl, _cacert,
 		_cert, _priv,
+		_time_diff,
 	)
 }

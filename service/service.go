@@ -17,7 +17,7 @@ import (
 
 var instance *responder.OCSPResponder
 
-func Serve(host, dbPath string, caCrl *x509.RevocationList, caCert, responderCert *x509.Certificate, responderPrivkey crypto.Signer) {
+func Serve(host, dbPath string, caCrl *x509.RevocationList, caCert, responderCert *x509.Certificate, responderPrivkey crypto.Signer, timeDiff uint32) {
 	r := mux.NewRouter()
 	registerRoutes(r)
 
@@ -39,6 +39,7 @@ func Serve(host, dbPath string, caCrl *x509.RevocationList, caCert, responderCer
 			Handler: r,
 			Addr:    host,
 		},
+		TimeDifference: time.Minute * time.Duration(timeDiff),
 	}
 	instance.UpdateEntriesFromCRL()
 

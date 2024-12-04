@@ -33,8 +33,9 @@ type OCSPResponder struct {
 	CaCertificate, Certificate *x509.Certificate
 	PrivateKey                 crypto.Signer
 
-	Database *badger.DB
-	Server   *http.Server
+	Database       *badger.DB
+	Server         *http.Server
+	TimeDifference time.Duration
 }
 
 func (responder *OCSPResponder) MakeResponse(derReq []byte) (derResp []byte, retrieveErr *RetrieveError) {
@@ -153,7 +154,7 @@ func (responder *OCSPResponder) revokedResponse(serialNumber *big.Int, at time.T
 
 func (responder *OCSPResponder) createResponse(template *ocsp.Response) (derResp []byte, err error) {
 	template.ThisUpdate = time.Now().Truncate(time.Minute)
-	template.NextUpdate = template.ThisUpdate.Add(9 * time.Minute)
+	template.NextUpdate = template.ThisUpdate.Add(responder.TimeDifference)
 	template.Certificate = responder.Certificate
 	derResp, err = ocsp.CreateResponse(responder.CaCertificate, responder.Certificate, *template, responder.PrivateKey)
 	return
